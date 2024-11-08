@@ -17,7 +17,8 @@ contract BuyMeACoffee {
         address buyer,
         uint256 timestamp,
         string message,
-        string name
+        string name,
+        uint256 value
     );
 
     // Struct to store the information about each coffee
@@ -26,6 +27,7 @@ contract BuyMeACoffee {
         uint256 timestamp;
         string message;
         string name;
+        uint256 value;
     }
 
     // mapping to store sender address and the coffee information
@@ -54,13 +56,18 @@ contract BuyMeACoffee {
         );
 
         // Create a new Coffee struct with the buyer's information
-        Coffee memory newCoffee = Coffee(block.timestamp, _message, _name);
+        Coffee memory newCoffee = Coffee(
+            block.timestamp,
+            _message,
+            _name,
+            msg.value
+        );
 
         // Assign the newCoffee struct to the sender's address in the coffees mapping
         coffees[msg.sender] = newCoffee;
 
         // Emit the NewCoffee event to announce the purchase
-        emit NewCoffee(msg.sender, block.timestamp, _message, _name);
+        emit NewCoffee(msg.sender, block.timestamp, _message, _name, msg.value);
     }
 
     // View function to get the coffee information for a specific address

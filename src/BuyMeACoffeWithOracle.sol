@@ -2,7 +2,18 @@
 
 pragma solidity ^0.8.28;
 
-contract BuyMeACoffeeAdvanced {
+import {Ownable} from "@thirdweb-dev/contracts/extension/Ownable.sol";
+import {ReentrancyGuard} from "@thirdweb-dev/contracts/external-deps/openzeppelin/security/ReentrancyGuard.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+
+contract BuyMeACoffeeAdvanced is Ownable, ReentrancyGuard {
+    AggregatorV3Interface internal dataFeed;
+
+    // Network Sepolia
+    // Aggregator ETH/USD
+    // address: 0x694AA1769357215DE4FAC081bf1f309aDC325306
+    // 289972000000
+
     // --- Events ---
     event NewCoffee(
         address buyer,
@@ -19,7 +30,6 @@ contract BuyMeACoffeeAdvanced {
 
     // --- Variables ---
 
-    address public owner;
     uint256 public immutable MINIMUM_COFFEE_PRICE;
     bool private locked = false;
 
@@ -34,29 +44,16 @@ contract BuyMeACoffeeAdvanced {
 
     mapping(address => Coffee) public coffees;
 
-    // Modifier for access control
-    // In solidity, a modifier is a reusable piece of code that can be attached to a function to modify its behavior. Modifiers are used to enforce access control, validate inputs, and perform other checks before executing the function's code.
-
     // --- Modifiers ---
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only the owner can call this function");
-        _;
-    }
+    // --- Constructor ---
 
-    modifier nonReentrant() {
-        require(!locked, "ReentrancyGuard: reentrant call");
-        locked = true;
-        _;
-        locked = false;
-    }
-
-    // constructor of the contract
-    // In solidity, a constructor is a special function that is executed only once when the contract is deployed. It is used to initialize the contract's state and perform any setup tasks.
-    // In this example, the constructor sets the owner of the contract to the address that deployed it and sets the minimum coffee price to the value passed as an argument.
     constructor(uint256 _minimumCoffeePrice) {
-        owner = msg.sender;
+        _setupOwner(msg.sender);
         MINIMUM_COFFEE_PRICE = _minimumCoffeePrice;
+        dataFeed = AggregatorV3Interface(
+            0x694AA1769357215DE4FAC081bf1f309aDC325306
+        );
     }
 
     function buyACoffee(
@@ -86,23 +83,37 @@ contract BuyMeACoffeeAdvanced {
         return (coffee.timestamp, coffee.message, coffee.name);
     }
 
-    // Adding the ability to withdraw the contract balance just to the owner
     function withdraw() public onlyOwner nonReentrant {
         require(address(this).balance > 0, "No balance to withdraw");
         payable(msg.sender).transfer(address(this).balance);
     }
 
+    function getChainlinkDataFeedLatestPrice() internal view returns (uint256) {
+        // 2,942.25000000
+        (, int answer, , , ) = dataFeed.latestRoundData();
+        return uint256(answer * 1e10);
+    }
+
+    function calculateThePriceOfACoffeeInWei(
+        uint256 _priceInUSD
+    ) public view returns (uint256) {
+        uint256 currentPrice = getChainlinkDataFeedLatestPrice();
+        uint256 usdPriceInWei = _priceInUSD * 1e18;
+
+        return (usdPriceInWei * 1e18) / currentPrice;
+    }
+
+    function _canSetOwner() internal view virtual override returns (bool) {
+        return msg.sender == owner();
+    }
+
     // --- Fallback and Receive Functions ---
 
-    // In Solidity, the receive() and fallback() functions are special functions that are automatically called when a contract receives Ether or when a call does not match any other function signature. These functions can be used to handle unexpected Ether transfers and calls, and can be customized to perform specific actions.
-
-    // This functions is triggered when someone sends Ether without data
     receive() external payable {
         if (msg.value < MINIMUM_COFFEE_PRICE) {
             revert NotEnoughEther();
         }
 
-        // This will automaticall record the sender and the value sent as an Anonymous donator
         Coffee memory newCoffee = Coffee(
             block.timestamp,
             "Anonymous donation",
@@ -119,8 +130,6 @@ contract BuyMeACoffeeAdvanced {
             msg.value
         );
     }
-
-    // This function is triggered if a call does not match any function signature
 
     fallback() external payable {
         emit FallbackTriggered(msg.sender, msg.value);
